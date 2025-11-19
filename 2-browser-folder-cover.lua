@@ -117,7 +117,7 @@ local Folder = {
         nb_items_font_size = 15,
         nb_items_margin = Screen:scaleBySize(4),
         nb_items_border = Size.border.thin,
-        nb_items_scale_default = 100,
+        nb_items_scale_default = 75,
         dir_max_font_size = 25,
     },
 }
@@ -141,7 +141,7 @@ local function patchCoverBrowser(plugin)
         return self
     end
 
-    function NumericSetting(text, name, default, min_value, max_value, step, suffix, ui_ref)
+    function NumericSetting(text, name, default, min_value, max_value, step, suffix)
         self = { text = text }
         self.get = function()
             local setting = BookInfoManager:getSetting(name)
@@ -150,7 +150,7 @@ local function patchCoverBrowser(plugin)
         self.set = function(value)
             BookInfoManager:saveSetting(name, value)
         end
-        self.show_dialog = function()
+        self.show_dialog = function(ui_ref)
             local spin_widget = SpinWidget:new {
                 title_text = text,
                 value = self.get(),
@@ -179,6 +179,15 @@ local function patchCoverBrowser(plugin)
         crop_to_fit = BooleanSetting(_("Crop folder custom image"), "folder_crop_custom_image", true),
         name_centered = BooleanSetting(_("Folder name centered"), "folder_name_centered", true),
         show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
+        nb_items_scale = NumericSetting(
+            _("File count indicator size"),
+            "folder_nb_items_scale",
+            Folder.face.nb_items_scale_default,
+            25,
+            150,
+            5,
+            "%"
+        ),
     }
 
     -- cover item
@@ -262,7 +271,7 @@ local function patchCoverBrowser(plugin)
         local size = nbitems:getSize()
         local nb_size = math.max(size.w, size.h) + Folder.face.nb_items_margin * 2
         -- Apply user-defined scale factor
-        local scale_percent = settings.nb_items_scale and settings.nb_items_scale.get() or Folder.face.nb_items_scale_default
+        local scale_percent = settings.nb_items_scale.get()
         nb_size = math.ceil(nb_size * (scale_percent / 100))
 
         local folder_name_widget
@@ -385,18 +394,6 @@ local function patchCoverBrowser(plugin)
         orig_CoverBrowser_addToMainMenu(self, menu_items)
         if menu_items.filebrowser_settings == nil then return end
 
-        -- Add numeric scale setting
-        settings.nb_items_scale = NumericSetting(
-            _("File count indicator size"),
-            "folder_nb_items_scale",
-            Folder.face.nb_items_scale_default,
-            50,
-            125,
-            5,
-            "%",
-            self.ui
-        )
-
         local item = getMenuItem(menu_items.filebrowser_settings, _("Mosaic and detailed list settings"))
         if item then
             item.sub_item_table[#item.sub_item_table].separator = true
@@ -415,7 +412,7 @@ local function patchCoverBrowser(plugin)
                                 return string.format("%s: %s", setting.text, setting.get_text())
                             end,
                             callback = function()
-                                setting.show_dialog()
+                                setting.show_dialog(self.ui)
                             end,
                         })
                     else
