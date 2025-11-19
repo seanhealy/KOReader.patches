@@ -85,6 +85,15 @@ function FileChooser:getListItem(dirpath, f, fullpath, attributes, collate)
     return cached_list[key]
 end
 
+-- local orig_FileChooser_genItemTableFromPath = FileChooser.genItemTableFromPath
+
+-- function FileChooser:genItemTableFromPath(path)
+--     local start = os.clock()
+--     local item_table = orig_FileChooser_genItemTableFromPath(self, path)
+--     logger.info("!!!!!!! GEN", path, (os.clock() - start) * 1000)
+--     return item_table
+-- end
+
 local function capitalize(sentence)
     local words = {}
     for word in sentence:gmatch("%S+") do
@@ -113,15 +122,16 @@ local Folder = {
 local function patchCoverBrowser(plugin)
     local MosaicMenu = require("mosaicmenu")
     local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
-    if not MosaicMenuItem then return end
+    if not MosaicMenuItem then return end -- Protect against remnants of project title
     local BookInfoManager = userpatch.getUpValue(MosaicMenuItem.update, "BookInfoManager")
     local original_update = MosaicMenuItem.update
 
+    -- setting
     function BooleanSetting(text, name, default)
         self = { text = text }
         self.get = function()
             local setting = BookInfoManager:getSetting(name)
-            if default then return not setting end
+            if default then return not setting end -- false is stored as nil, so we need or own logic for boolean default
             return setting
         end
         self.toggle = function() return BookInfoManager:toggleSetting(name) end
@@ -134,17 +144,18 @@ local function patchCoverBrowser(plugin)
         show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
     }
 
+    -- cover item
     function MosaicMenuItem:update(...)
         original_update(self, ...)
         if self._foldercover_processed or self.menu.no_refresh_covers or not self.do_cover_image then return end
 
-        if self.entry.is_file or self.entry.file or not self.mandatory then return end
+        if self.entry.is_file or self.entry.file or not self.mandatory then return end -- it's a file
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
 
         self._foldercover_processed = true
 
-        local cover_file = findCover(dir_path)
+        local cover_file = findCover(dir_path) --custom
         if cover_file then
             local success, w, h = pcall(function()
                 local tmp_img = ImageWidget:new { file = cover_file, scale_factor = 1 }
@@ -161,7 +172,7 @@ local function patchCoverBrowser(plugin)
         end
 
         self.menu._dummy = true
-        local entries = self.menu:genItemTableFromPath(dir_path)
+        local entries = self.menu:genItemTableFromPath(dir_path) -- sorted
         self.menu._dummy = false
         if not entries then return end
 
@@ -212,6 +223,7 @@ local function patchCoverBrowser(plugin)
 
         local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
 
+        -- Calculate dimensions for perfect circle with 0.75 scale
         local nbitems_text_size = nbitems:getSize()
         local base_diameter = math.max(nbitems_text_size.w, nbitems_text_size.h) + Folder.face.nb_items_margin * 2
         local circle_diameter = math.ceil(base_diameter * 0.75)
@@ -234,6 +246,7 @@ local function patchCoverBrowser(plugin)
 
         local nbitems_widget
         if tonumber(nbitems.text) ~= 0 then
+            -- Uniform spacing for all edges
             local margin_from_edge = Folder.face.nb_items_margin
 
             nbitems_widget = BottomContainer:new {
@@ -241,14 +254,17 @@ local function patchCoverBrowser(plugin)
                 RightContainer:new {
                     dimen = {
                         w = dimen.w - margin_from_edge,
-                        h = circle_diameter + (margin_from_edge * 2),
+                        h = circle_diameter + (margin_from_edge * 2), -- Extra space for bottom margin
                     },
+                    -- Position in bottom right corner with margin
                     BottomContainer:new {
                         dimen = { 
                             w = circle_diameter + margin_from_edge, 
                             h = circle_diameter + (margin_from_edge * 2) 
                         },
+                        -- Container with bottom padding to create spacing
                         VerticalGroup:new {
+                            -- Circle container itself
                             FrameContainer:new {
                                 width = circle_diameter,
                                 height = circle_diameter,
@@ -258,6 +274,7 @@ local function patchCoverBrowser(plugin)
                                 background = Blitbuffer.COLOR_WHITE,
                                 bordersize = Folder.face.circle_border_size,
                                 border = Blitbuffer.COLOR_BLACK,
+                                -- Inner container to perfectly center the text
                                 CenterContainer:new { 
                                     dimen = { 
                                         w = circle_diameter - (2 * Folder.face.circle_border_size), 
@@ -266,6 +283,7 @@ local function patchCoverBrowser(plugin)
                                     nbitems 
                                 },
                             },
+                            -- Bottom space
                             VerticalSpan:new { width = margin_from_edge },
                         },
                     },
@@ -308,14 +326,14 @@ local function patchCoverBrowser(plugin)
 
     function MosaicMenuItem:_getTextBoxes(dimen)
         local nbitems = TextWidget:new {
-            text = self.mandatory:match("(%d+) \u{F016}") or "",
+            text = self.mandatory:match("(%d+) \u{F016}") or "", -- nb books
             face = Font:getFace("cfont", Folder.face.nb_items_font_size),
             bold = true,
             padding = 0,
         }
 
         local text = self.text
-        if text:match("/$") then text = text:sub(1, -2) end
+        if text:match("/$") then text = text:sub(1, -2) end -- remove "/"
         text = BD.directory(capitalize(text))
         local available_height = dimen.h - 2 * nbitems:getSize().h
         local dir_font_size = Folder.face.dir_max_font_size
@@ -332,7 +350,7 @@ local function patchCoverBrowser(plugin)
             }
             if directory:getSize().h <= available_height then break end
             dir_font_size = dir_font_size - 1
-            if dir_font_size < 10 then
+            if dir_font_size < 10 then -- don't go too low
                 directory:free()
                 directory.height = available_height
                 directory.height_adjust = true
@@ -345,35 +363,9 @@ local function patchCoverBrowser(plugin)
         return directory, nbitems
     end
 
+    -- menu
     local orig_CoverBrowser_addToMainMenu = plugin.addToMainMenu
 
     function plugin:addToMainMenu(menu_items)
         orig_CoverBrowser_addToMainMenu(self, menu_items)
         if menu_items.filebrowser_settings == nil then return end
-
-        local item = getMenuItem(menu_items.filebrowser_settings, _("Mosaic and detailed list settings"))
-        if item then
-            item.sub_item_table[#item.sub_item_table].separator = true
-            for i, setting in pairs(settings) do
-                if
-                    not getMenuItem(
-                        menu_items.filebrowser_settings,
-                        _("Mosaic and detailed list settings"),
-                        setting.text
-                    )
-                then
-                    table.insert(item.sub_item_table, {
-                        text = setting.text,
-                        checked_func = function() return setting.get() end,
-                        callback = function()
-                            setting.toggle()
-                            self.ui.file_chooser:updateItems()
-                        end,
-                    })
-                end
-            end
-        end
-    end
-end
-
-userpatch.registerPatchPluginFunc("coverbrowser", patchCoverBrowser)
