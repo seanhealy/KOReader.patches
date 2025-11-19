@@ -246,7 +246,6 @@ local function patchCoverBrowser(plugin)
 
         local nbitems_widget
         if tonumber(nbitems.text) ~= 0 then
-            -- Uniform spacing for all edges
             local margin_from_edge = Folder.face.nb_items_margin
 
             nbitems_widget = BottomContainer:new {
@@ -254,36 +253,25 @@ local function patchCoverBrowser(plugin)
                 RightContainer:new {
                     dimen = {
                         w = dimen.w - margin_from_edge,
-                        h = circle_diameter + (margin_from_edge * 2), -- Extra space for bottom margin
+                        h = circle_diameter + (margin_from_edge * 2),
                     },
-                    -- Position in bottom right corner with margin
                     BottomContainer:new {
                         dimen = { 
                             w = circle_diameter + margin_from_edge, 
                             h = circle_diameter + (margin_from_edge * 2) 
                         },
-                        -- Container with bottom padding to create spacing
                         VerticalGroup:new {
-                            -- Circle container itself
                             FrameContainer:new {
-                                width = circle_diameter,
-                                height = circle_diameter,
                                 padding = 0,
                                 margin = 0,
                                 radius = circle_radius,
                                 background = Blitbuffer.COLOR_WHITE,
                                 bordersize = Folder.face.circle_border_size,
-                                border = Blitbuffer.COLOR_BLACK,
-                                -- Inner container to perfectly center the text
                                 CenterContainer:new { 
-                                    dimen = { 
-                                        w = circle_diameter - (2 * Folder.face.circle_border_size), 
-                                        h = circle_diameter - (2 * Folder.face.circle_border_size) 
-                                    }, 
+                                    dimen = { w = circle_diameter, h = circle_diameter }, 
                                     nbitems 
                                 },
                             },
-                            -- Bottom space
                             VerticalSpan:new { width = margin_from_edge },
                         },
                     },
@@ -369,3 +357,30 @@ local function patchCoverBrowser(plugin)
     function plugin:addToMainMenu(menu_items)
         orig_CoverBrowser_addToMainMenu(self, menu_items)
         if menu_items.filebrowser_settings == nil then return end
+
+        local item = getMenuItem(menu_items.filebrowser_settings, _("Mosaic and detailed list settings"))
+        if item then
+            item.sub_item_table[#item.sub_item_table].separator = true
+            for i, setting in pairs(settings) do
+                if
+                    not getMenuItem( -- already exists ?
+                        menu_items.filebrowser_settings,
+                        _("Mosaic and detailed list settings"),
+                        setting.text
+                    )
+                then
+                    table.insert(item.sub_item_table, {
+                        text = setting.text,
+                        checked_func = function() return setting.get() end,
+                        callback = function()
+                            setting.toggle()
+                            self.ui.file_chooser:updateItems()
+                        end,
+                    })
+                end
+            end
+        end
+    end
+end
+
+userpatch.registerPatchPluginFunc("coverbrowser", patchCoverBrowser)
