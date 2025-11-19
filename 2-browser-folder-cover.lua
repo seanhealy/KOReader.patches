@@ -142,18 +142,26 @@ local function patchCoverBrowser(plugin)
     end
 
     function NumericSetting(text, name, default, min_value, max_value, step, suffix)
-        self = { text = text }
-        self.get = function()
+        local obj = { 
+            text = text,
+            name = name,
+            default = default,
+            min_value = min_value,
+            max_value = max_value,
+            step = step,
+            suffix = suffix
+        }
+        obj.get = function()
             local setting = BookInfoManager:getSetting(name)
             return setting or default
         end
-        self.set = function(value)
+        obj.set = function(value)
             BookInfoManager:saveSetting(name, value)
         end
-        self.show_dialog = function(ui_ref)
+        obj.show_dialog = function(ui_ref)
             local spin_widget = SpinWidget:new {
                 title_text = text,
-                value = self.get(),
+                value = obj.get(),
                 value_min = min_value,
                 value_max = max_value,
                 value_step = step,
@@ -161,7 +169,7 @@ local function patchCoverBrowser(plugin)
                 ok_text = _("Set"),
                 default_value = default,
                 callback = function(spin)
-                    self.set(spin.value)
+                    obj.set(spin.value)
                     if ui_ref then
                         ui_ref.file_chooser:updateItems()
                     end
@@ -169,10 +177,10 @@ local function patchCoverBrowser(plugin)
             }
             UIManager:show(spin_widget)
         end
-        self.get_text = function()
-            return string.format("%d%s", self.get(), suffix or "")
+        obj.get_text = function()
+            return string.format("%d%s", obj.get(), suffix or "")
         end
-        return self
+        return obj
     end
 
     local settings = {
