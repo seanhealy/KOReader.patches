@@ -12,9 +12,11 @@ local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
+local SpinWidget = require("ui/widget/spinwidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local TopContainer = require("ui/widget/container/topcontainer")
+local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local userpatch = require("userpatch")
@@ -115,6 +117,7 @@ local Folder = {
         nb_items_font_size = 15,
         nb_items_margin = Screen:scaleBySize(4),
         nb_items_border = Size.border.thin,
+        nb_items_scale_default = 75,
         dir_max_font_size = 25,
     },
 }
@@ -135,6 +138,40 @@ local function patchCoverBrowser(plugin)
             return setting
         end
         self.toggle = function() return BookInfoManager:toggleSetting(name) end
+        return self
+    end
+
+    function NumericSetting(text, name, default, min_value, max_value, step, suffix, ui_ref)
+        self = { text = text }
+        self.get = function()
+            local setting = BookInfoManager:getSetting(name)
+            return setting or default
+        end
+        self.set = function(value)
+            BookInfoManager:saveSetting(name, value)
+        end
+        self.show_dialog = function()
+            local spin_widget = SpinWidget:new {
+                title_text = text,
+                value = self.get(),
+                value_min = min_value,
+                value_max = max_value,
+                value_step = step,
+                value_hold_step = step * 2,
+                ok_text = _("Set"),
+                default_value = default,
+                callback = function(spin)
+                    self.set(spin.value)
+                    if ui_ref then
+                        ui_ref.file_chooser:updateItems()
+                    end
+                end,
+            }
+            UIManager:show(spin_widget)
+        end
+        self.get_text = function()
+            return string.format("%d%s", self.get(), suffix or "")
+        end
         return self
     end
 
@@ -224,8 +261,9 @@ local function patchCoverBrowser(plugin)
         local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
         local size = nbitems:getSize()
         local nb_size = math.max(size.w, size.h) + Folder.face.nb_items_margin * 2
-        -- Apply 0.75 scale factor
-        nb_size = math.ceil(nb_size * 0.75)
+        -- Apply user-defined scale factor
+        local scale_percent = settings.nb_items_scale and settings.nb_items_scale.get() or Folder.face.nb_items_scale_default
+        nb_size = math.ceil(nb_size * (scale_percent / 100))
 
         local folder_name_widget
         if settings.show_folder_name.get() then
@@ -347,6 +385,18 @@ local function patchCoverBrowser(plugin)
         orig_CoverBrowser_addToMainMenu(self, menu_items)
         if menu_items.filebrowser_settings == nil then return end
 
+        -- Add numeric scale setting
+        settings.nb_items_scale = NumericSetting(
+            _("File count indicator size"),
+            "folder_nb_items_scale",
+            Folder.face.nb_items_scale_default,
+            25,
+            150,
+            5,
+            "%",
+            self.ui
+        )
+
         local item = getMenuItem(menu_items.filebrowser_settings, _("Mosaic and detailed list settings"))
         if item then
             item.sub_item_table[#item.sub_item_table].separator = true
@@ -358,14 +408,27 @@ local function patchCoverBrowser(plugin)
                         setting.text
                     )
                 then
-                    table.insert(item.sub_item_table, {
-                        text = setting.text,
-                        checked_func = function() return setting.get() end,
-                        callback = function()
-                            setting.toggle()
-                            self.ui.file_chooser:updateItems()
-                        end,
-                    })
+                    if setting.show_dialog then
+                        -- Numeric setting with dialog
+                        table.insert(item.sub_item_table, {
+                            text_func = function()
+                                return string.format("%s: %s", setting.text, setting.get_text())
+                            end,
+                            callback = function()
+                                setting.show_dialog()
+                            end,
+                        })
+                    else
+                        -- Boolean setting
+                        table.insert(item.sub_item_table, {
+                            text = setting.text,
+                            checked_func = function() return setting.get() end,
+                            callback = function()
+                                setting.toggle()
+                                self.ui.file_chooser:updateItems()
+                            end,
+                        })
+                    end
                 end
             end
         end
