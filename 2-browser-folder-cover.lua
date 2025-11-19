@@ -288,7 +288,7 @@ local function patchCoverBrowser(plugin)
         local size = nbitems:getSize()
         local nb_size = math.max(size.w, size.h) + Folder.face.nb_items_margin * 2
         -- Apply user-defined scale factor
-        local scale_percent = settings.nb_items_scale.get() or Folder.face.nb_items_scale_default
+        local scale_percent = settings.nb_items_scale.get()
         nb_size = math.ceil(nb_size * (scale_percent / 100))
 
         local folder_name_widget
