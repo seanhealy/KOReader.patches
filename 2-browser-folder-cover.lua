@@ -416,6 +416,7 @@ local function patchCoverBrowser(plugin)
                     if setting.show_dialog then
                         -- Numeric setting with dialog
                         table.insert(item.sub_item_table, {
+                            text = setting.text, -- stable plain label used for detection
                             text_func = function()
                                 return string.format("%s: %s", setting.text, setting.get_text())
                             end,
