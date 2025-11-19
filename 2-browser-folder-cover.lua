@@ -110,12 +110,12 @@ local Folder = {
         width = 0.97,
     },
     face = {
-        border_size = Screen:scaleBySize(1),
+        border_size = Size.border.thick,
         alpha = 0.75,
-        nb_items_font_size = 10,
+        nb_items_font_size = 15,
         nb_items_margin = Screen:scaleBySize(4),
-        dir_max_font_size = 15,
-        circle_border_size = Screen:scaleBySize(0.5),
+        nb_items_border = Size.border.thin,
+        dir_max_font_size = 25,
     },
 }
 
@@ -222,12 +222,10 @@ local function patchCoverBrowser(plugin)
         }
 
         local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
-
-        -- Calculate dimensions for perfect circle with 0.75 scale
-        local nbitems_text_size = nbitems:getSize()
-        local base_diameter = math.max(nbitems_text_size.w, nbitems_text_size.h) + Folder.face.nb_items_margin * 2
-        local circle_diameter = math.ceil(base_diameter * 0.75)
-        local circle_radius = math.ceil(circle_diameter * 0.5)
+        local size = nbitems:getSize()
+        local nb_size = math.max(size.w, size.h) + Folder.face.nb_items_margin * 2
+        -- Apply 0.75 scale factor
+        nb_size = math.ceil(nb_size * 0.75)
 
         local folder_name_widget
         if settings.show_folder_name.get() then
@@ -246,34 +244,25 @@ local function patchCoverBrowser(plugin)
 
         local nbitems_widget
         if tonumber(nbitems.text) ~= 0 then
-            local margin_from_edge = Folder.face.nb_items_margin
-
             nbitems_widget = BottomContainer:new {
                 dimen = dimen,
                 RightContainer:new {
                     dimen = {
-                        w = dimen.w - margin_from_edge,
-                        h = circle_diameter + (margin_from_edge * 2),
+                        w = dimen.w - Folder.face.nb_items_margin,
+                        h = nb_size + Folder.face.nb_items_margin * 2,
                     },
-                    BottomContainer:new {
-                        dimen = { 
-                            w = circle_diameter + margin_from_edge, 
-                            h = circle_diameter + (margin_from_edge * 2) 
-                        },
-                        VerticalGroup:new {
-                            FrameContainer:new {
-                                padding = 0,
-                                margin = 0,
-                                radius = circle_radius,
-                                background = Blitbuffer.COLOR_WHITE,
-                                bordersize = Folder.face.circle_border_size,
-                                CenterContainer:new { 
-                                    dimen = { w = circle_diameter, h = circle_diameter }, 
-                                    nbitems 
-                                },
+                    VerticalGroup:new {
+                        FrameContainer:new {
+                            padding = 0,
+                            radius = math.ceil(nb_size * 0.5),
+                            background = Blitbuffer.COLOR_WHITE,
+                            bordersize = Folder.face.nb_items_border,
+                            CenterContainer:new { 
+                                dimen = { w = nb_size, h = nb_size }, 
+                                nbitems 
                             },
-                            VerticalSpan:new { width = margin_from_edge },
                         },
+                        VerticalSpan:new { width = Folder.face.nb_items_margin },
                     },
                 },
                 overlap_align = "center",
