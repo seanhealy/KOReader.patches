@@ -390,8 +390,8 @@ local function patchCoverBrowser(plugin)
             _("File count indicator size"),
             "folder_nb_items_scale",
             Folder.face.nb_items_scale_default,
-            25,
-            150,
+            50,
+            125,
             5,
             "%",
             self.ui
