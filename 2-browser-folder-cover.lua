@@ -117,7 +117,7 @@ local Folder = {
         nb_items_font_size = 15,
         nb_items_margin = Screen:scaleBySize(4),
         nb_items_border = Size.border.thin,
-        nb_items_scale_default = 75,
+        nb_items_scale_default = 100,
         dir_max_font_size = 25,
     },
 }
