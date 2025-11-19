@@ -248,7 +248,7 @@ local function patchCoverBrowser(plugin)
                 dimen = dimen,
                 RightContainer:new {
                     dimen = {
-                        w = dimen.w - Folder.face.nb_items_margin,
+                        w = dimen.w - Folder.face.nb_items_margin * 2,
                         h = nb_size + Folder.face.nb_items_margin * 2,
                     },
                     VerticalGroup:new {
