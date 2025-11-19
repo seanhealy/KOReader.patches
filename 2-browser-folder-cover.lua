@@ -12,9 +12,11 @@ local LineWidget = require("ui/widget/linewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Size = require("ui/size")
+local SpinWidget = require("ui/widget/spinwidget")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local TextWidget = require("ui/widget/textwidget")
 local TopContainer = require("ui/widget/container/topcontainer")
+local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local userpatch = require("userpatch")
@@ -112,8 +114,10 @@ local Folder = {
     face = {
         border_size = Size.border.thick,
         alpha = 0.75,
-        nb_items_font_size = 20,
-        nb_items_margin = Screen:scaleBySize(5),
+        nb_items_font_size = 15,
+        nb_items_margin = Screen:scaleBySize(4),
+        nb_items_border = Size.border.thin,
+        nb_items_scale_default = 100,
         dir_max_font_size = 25,
     },
 }
@@ -137,10 +141,70 @@ local function patchCoverBrowser(plugin)
         return self
     end
 
+    -- Creates a numeric setting object with dialog-based user interaction
+    -- @param text Display text for the setting
+    -- @param name Setting name for storage
+    -- @param default Default value
+    -- @param min_value Minimum allowed value
+    -- @param max_value Maximum allowed value
+    -- @param step Step size for value adjustments
+    -- @param suffix Optional suffix to display (e.g., "%")
+    -- @return Table with get, set, show_dialog, and get_text methods
+    function NumericSetting(text, name, default, min_value, max_value, step, suffix)
+        local obj = { 
+            text = text,
+            name = name,
+            default = default,
+            min_value = min_value,
+            max_value = max_value,
+            step = step,
+            suffix = suffix
+        }
+        obj.get = function()
+            local setting = BookInfoManager:getSetting(name)
+            return setting or default
+        end
+        obj.set = function(value)
+            BookInfoManager:saveSetting(name, value)
+        end
+        obj.show_dialog = function(ui_ref)
+            local spin_widget = SpinWidget:new {
+                title_text = text,
+                value = obj.get(),
+                value_min = min_value,
+                value_max = max_value,
+                value_step = step,
+                value_hold_step = step * 2,
+                ok_text = _("Set"),
+                default_value = default,
+                callback = function(spin)
+                    obj.set(spin.value)
+                    if ui_ref then
+                        ui_ref.file_chooser:updateItems()
+                    end
+                end,
+            }
+            UIManager:show(spin_widget)
+        end
+        obj.get_text = function()
+            return string.format("%d%s", obj.get(), suffix or "")
+        end
+        return obj
+    end
+
     local settings = {
         crop_to_fit = BooleanSetting(_("Crop folder custom image"), "folder_crop_custom_image", true),
         name_centered = BooleanSetting(_("Folder name centered"), "folder_name_centered", true),
         show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
+        nb_items_scale = NumericSetting(
+            _("File count indicator size"),
+            "folder_nb_items_scale",
+            Folder.face.nb_items_scale_default,
+            50,
+            125,
+            5,
+            "%"
+        ),
     }
 
     -- cover item
@@ -222,7 +286,10 @@ local function patchCoverBrowser(plugin)
 
         local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
         local size = nbitems:getSize()
-        local nb_size = math.max(size.w, size.h)
+        local nb_size = math.max(size.w, size.h) + Folder.face.nb_items_margin * 2
+        -- Apply user-defined scale factor
+        local scale_percent = settings.nb_items_scale.get()
+        nb_size = math.ceil(nb_size * (scale_percent / 100))
 
         local folder_name_widget
         if settings.show_folder_name.get() then
@@ -245,15 +312,21 @@ local function patchCoverBrowser(plugin)
                 dimen = dimen,
                 RightContainer:new {
                     dimen = {
-                        w = dimen.w - Folder.face.nb_items_margin,
-                        h = nb_size + Folder.face.nb_items_margin * 2 + math.ceil(nb_size * 0.125),
+                        w = dimen.w - Folder.face.nb_items_margin * 2,
+                        h = nb_size + Folder.face.nb_items_margin * 2,
                     },
-                    FrameContainer:new {
-                        padding = 0,
-                        padding_bottom = math.ceil(nb_size * 0.125),
-                        radius = math.ceil(nb_size * 0.5),
-                        background = Blitbuffer.COLOR_WHITE,
-                        CenterContainer:new { dimen = { w = nb_size, h = nb_size }, nbitems },
+                    VerticalGroup:new {
+                        FrameContainer:new {
+                            padding = 0,
+                            radius = math.ceil(nb_size * 0.5),
+                            background = Blitbuffer.COLOR_WHITE,
+                            bordersize = Folder.face.nb_items_border,
+                            CenterContainer:new { 
+                                dimen = { w = nb_size, h = nb_size }, 
+                                nbitems 
+                            },
+                        },
+                        VerticalSpan:new { width = Folder.face.nb_items_margin },
                     },
                 },
                 overlap_align = "center",
@@ -349,14 +422,28 @@ local function patchCoverBrowser(plugin)
                         setting.text
                     )
                 then
-                    table.insert(item.sub_item_table, {
-                        text = setting.text,
-                        checked_func = function() return setting.get() end,
-                        callback = function()
-                            setting.toggle()
-                            self.ui.file_chooser:updateItems()
-                        end,
-                    })
+                    if setting.show_dialog then
+                        -- Numeric setting with dialog
+                        table.insert(item.sub_item_table, {
+                            text = setting.text, -- stable plain label used for detection
+                            text_func = function()
+                                return string.format("%s: %s", setting.text, setting.get_text())
+                            end,
+                            callback = function()
+                                setting.show_dialog(self.ui)
+                            end,
+                        })
+                    else
+                        -- Boolean setting
+                        table.insert(item.sub_item_table, {
+                            text = setting.text,
+                            checked_func = function() return setting.get() end,
+                            callback = function()
+                                setting.toggle()
+                                self.ui.file_chooser:updateItems()
+                            end,
+                        })
+                    end
                 end
             end
         end
