@@ -141,6 +141,15 @@ local function patchCoverBrowser(plugin)
         return self
     end
 
+    -- Creates a numeric setting object with dialog-based user interaction
+    -- @param text Display text for the setting
+    -- @param name Setting name for storage
+    -- @param default Default value
+    -- @param min_value Minimum allowed value
+    -- @param max_value Maximum allowed value
+    -- @param step Step size for value adjustments
+    -- @param suffix Optional suffix to display (e.g., "%")
+    -- @return Table with get, set, show_dialog, and get_text methods
     function NumericSetting(text, name, default, min_value, max_value, step, suffix)
         local obj = { 
             text = text,
