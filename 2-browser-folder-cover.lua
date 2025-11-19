@@ -85,15 +85,6 @@ function FileChooser:getListItem(dirpath, f, fullpath, attributes, collate)
     return cached_list[key]
 end
 
--- local orig_FileChooser_genItemTableFromPath = FileChooser.genItemTableFromPath
-
--- function FileChooser:genItemTableFromPath(path)
---     local start = os.clock()
---     local item_table = orig_FileChooser_genItemTableFromPath(self, path)
---     logger.info("!!!!!!! GEN", path, (os.clock() - start) * 1000)
---     return item_table
--- end
-
 local function capitalize(sentence)
     local words = {}
     for word in sentence:gmatch("%S+") do
@@ -110,27 +101,27 @@ local Folder = {
         width = 0.97,
     },
     face = {
-        border_size = Size.border.thick,
+        border_size = Screen:scaleBySize(1),
         alpha = 0.75,
-        nb_items_font_size = 20,
-        nb_items_margin = Screen:scaleBySize(5),
-        dir_max_font_size = 25,
+        nb_items_font_size = 10,
+        nb_items_margin = Screen:scaleBySize(4),
+        dir_max_font_size = 15,
+        circle_border_size = Screen:scaleBySize(0.5),
     },
 }
 
 local function patchCoverBrowser(plugin)
     local MosaicMenu = require("mosaicmenu")
     local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
-    if not MosaicMenuItem then return end -- Protect against remnants of project title
+    if not MosaicMenuItem then return end
     local BookInfoManager = userpatch.getUpValue(MosaicMenuItem.update, "BookInfoManager")
     local original_update = MosaicMenuItem.update
 
-    -- setting
     function BooleanSetting(text, name, default)
         self = { text = text }
         self.get = function()
             local setting = BookInfoManager:getSetting(name)
-            if default then return not setting end -- false is stored as nil, so we need or own logic for boolean default
+            if default then return not setting end
             return setting
         end
         self.toggle = function() return BookInfoManager:toggleSetting(name) end
@@ -143,18 +134,17 @@ local function patchCoverBrowser(plugin)
         show_folder_name = BooleanSetting(_("Show folder name"), "folder_name_show", true),
     }
 
-    -- cover item
     function MosaicMenuItem:update(...)
         original_update(self, ...)
         if self._foldercover_processed or self.menu.no_refresh_covers or not self.do_cover_image then return end
 
-        if self.entry.is_file or self.entry.file or not self.mandatory then return end -- it's a file
+        if self.entry.is_file or self.entry.file or not self.mandatory then return end
         local dir_path = self.entry and self.entry.path
         if not dir_path then return end
 
         self._foldercover_processed = true
 
-        local cover_file = findCover(dir_path) --custom
+        local cover_file = findCover(dir_path)
         if cover_file then
             local success, w, h = pcall(function()
                 local tmp_img = ImageWidget:new { file = cover_file, scale_factor = 1 }
@@ -171,7 +161,7 @@ local function patchCoverBrowser(plugin)
         end
 
         self.menu._dummy = true
-        local entries = self.menu:genItemTableFromPath(dir_path) -- sorted
+        local entries = self.menu:genItemTableFromPath(dir_path)
         self.menu._dummy = false
         if not entries then return end
 
@@ -221,8 +211,11 @@ local function patchCoverBrowser(plugin)
         }
 
         local directory, nbitems = self:_getTextBoxes { w = size.w, h = size.h }
-        local size = nbitems:getSize()
-        local nb_size = math.max(size.w, size.h)
+
+        local nbitems_text_size = nbitems:getSize()
+        local base_diameter = math.max(nbitems_text_size.w, nbitems_text_size.h) + Folder.face.nb_items_margin * 2
+        local circle_diameter = math.ceil(base_diameter * 0.75)
+        local circle_radius = math.ceil(circle_diameter * 0.5)
 
         local folder_name_widget
         if settings.show_folder_name.get() then
@@ -241,19 +234,40 @@ local function patchCoverBrowser(plugin)
 
         local nbitems_widget
         if tonumber(nbitems.text) ~= 0 then
+            local margin_from_edge = Folder.face.nb_items_margin
+
             nbitems_widget = BottomContainer:new {
                 dimen = dimen,
                 RightContainer:new {
                     dimen = {
-                        w = dimen.w - Folder.face.nb_items_margin,
-                        h = nb_size + Folder.face.nb_items_margin * 2 + math.ceil(nb_size * 0.125),
+                        w = dimen.w - margin_from_edge,
+                        h = circle_diameter + (margin_from_edge * 2),
                     },
-                    FrameContainer:new {
-                        padding = 0,
-                        padding_bottom = math.ceil(nb_size * 0.125),
-                        radius = math.ceil(nb_size * 0.5),
-                        background = Blitbuffer.COLOR_WHITE,
-                        CenterContainer:new { dimen = { w = nb_size, h = nb_size }, nbitems },
+                    BottomContainer:new {
+                        dimen = { 
+                            w = circle_diameter + margin_from_edge, 
+                            h = circle_diameter + (margin_from_edge * 2) 
+                        },
+                        VerticalGroup:new {
+                            FrameContainer:new {
+                                width = circle_diameter,
+                                height = circle_diameter,
+                                padding = 0,
+                                margin = 0,
+                                radius = circle_radius,
+                                background = Blitbuffer.COLOR_WHITE,
+                                bordersize = Folder.face.circle_border_size,
+                                border = Blitbuffer.COLOR_BLACK,
+                                CenterContainer:new { 
+                                    dimen = { 
+                                        w = circle_diameter - (2 * Folder.face.circle_border_size), 
+                                        h = circle_diameter - (2 * Folder.face.circle_border_size) 
+                                    }, 
+                                    nbitems 
+                                },
+                            },
+                            VerticalSpan:new { width = margin_from_edge },
+                        },
                     },
                 },
                 overlap_align = "center",
@@ -294,14 +308,14 @@ local function patchCoverBrowser(plugin)
 
     function MosaicMenuItem:_getTextBoxes(dimen)
         local nbitems = TextWidget:new {
-            text = self.mandatory:match("(%d+) \u{F016}") or "", -- nb books
+            text = self.mandatory:match("(%d+) \u{F016}") or "",
             face = Font:getFace("cfont", Folder.face.nb_items_font_size),
             bold = true,
             padding = 0,
         }
 
         local text = self.text
-        if text:match("/$") then text = text:sub(1, -2) end -- remove "/"
+        if text:match("/$") then text = text:sub(1, -2) end
         text = BD.directory(capitalize(text))
         local available_height = dimen.h - 2 * nbitems:getSize().h
         local dir_font_size = Folder.face.dir_max_font_size
@@ -318,7 +332,7 @@ local function patchCoverBrowser(plugin)
             }
             if directory:getSize().h <= available_height then break end
             dir_font_size = dir_font_size - 1
-            if dir_font_size < 10 then -- don't go too low
+            if dir_font_size < 10 then
                 directory:free()
                 directory.height = available_height
                 directory.height_adjust = true
@@ -331,7 +345,6 @@ local function patchCoverBrowser(plugin)
         return directory, nbitems
     end
 
-    -- menu
     local orig_CoverBrowser_addToMainMenu = plugin.addToMainMenu
 
     function plugin:addToMainMenu(menu_items)
@@ -343,7 +356,7 @@ local function patchCoverBrowser(plugin)
             item.sub_item_table[#item.sub_item_table].separator = true
             for i, setting in pairs(settings) do
                 if
-                    not getMenuItem( -- already exists ?
+                    not getMenuItem(
                         menu_items.filebrowser_settings,
                         _("Mosaic and detailed list settings"),
                         setting.text
